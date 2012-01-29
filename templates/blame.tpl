@@ -15,6 +15,27 @@
 {/if}
 {/block}
 
+{block name=javascriptpaths}
+{if file_exists('js/blob.min.js')}
+GitPHPJSPaths.projectlist = "blob.min";
+{/if}
+{/block}
+{block name=javascriptmodules}
+	GitPHPJSModules = ['blob'];
+{/block}
+
+{block name=javascript}
+{if $fixupjs}
+<script type="text/javascript">
+require.ready(
+    function($) {
+    {$fixupjs}
+    }
+);
+</script>
+{/if}
+{/block}
+
 {block name=main}
 
  <div class="page_nav">
@@ -61,8 +82,13 @@
 	      {/if}
 	    </td>
 	    <td class="num"><a id="l{$smarty.foreach.blob.iteration}" href="#l{$smarty.foreach.blob.iteration}" class="linenr">{$smarty.foreach.blob.iteration}</a></td>
+	    {if $picture}
+	    <td class="picture"><img class="new" src="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=blob_plain&amp;h={$blob->GetHash()}&amp;f={$file}"></td>
+	    {else}
 	    <td class="codeline">{$blobline|escape}</td>
+	    {/if}
 	  </tr>
+	{if $picture}{break}{/if}
 	{/foreach}
 	</table>
   {/if}

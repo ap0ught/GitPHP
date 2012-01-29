@@ -96,10 +96,10 @@ abstract class GitPHP_Ref extends GitPHP_GitObject
 		$args[] = $this->GetRefPath();
 		$hash = trim($exe->Execute(GIT_SHOW_REF, $args));
 
-		if (empty($hash))
-			throw new Exception('Invalid ref ' . $this->GetRefPath());
-
-		$this->SetHash($hash);
+		if (!empty($hash))
+			$this->SetHash($hash);
+//		else
+//			 throw new Exception('Invalid ref ' . $this->GetRefPath() .' ('. $this->project->GetProject().')' );
 	}
 
 	/**
@@ -138,6 +138,10 @@ abstract class GitPHP_Ref extends GitPHP_GitObject
 	 */
 	public function GetRefPath()
 	{
+		if (strstr($this->refName,'/refs/tags/')) {
+			$this->refName = substr(strstr($this->refName,'/refs/tags/'), 11);
+			$this->refDir = 'tags';
+		}
 		return 'refs/' . $this->refDir . '/' . $this->refName;
 	}
 

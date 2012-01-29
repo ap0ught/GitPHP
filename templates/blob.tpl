@@ -12,6 +12,12 @@
   <style type="text/css">
   {$geshicss}
   </style>
+  {if file_exists('css/geshi.css')}
+    <link rel="stylesheet" href="css/geshi.css" type="text/css" />
+  {/if}
+  {if file_exists('css/geshi_custom.css')}
+    <link rel="stylesheet" href="css/geshi_custom.css" type="text/css" />
+  {/if}
 {/if}
 {/block}
 
@@ -21,7 +27,19 @@ GitPHPJSPaths.blob = "blob.min";
 {/if}
 {/block}
 {block name=javascriptmodules}
-GitPHPJSModules = ['blob'];
+	GitPHPJSModules = ['blob'];
+{/block}
+
+{block name=javascript}
+{if $fixupjs}
+<script type="text/javascript">
+require.ready(
+    function($) {
+    {$fixupjs}
+    }
+);
+</script>
+{/if}
 {/block}
 
 {block name=main}
@@ -30,7 +48,7 @@ GitPHPJSModules = ['blob'];
    {include file='nav.tpl' treecommit=$commit}
    <br />
    <a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=blob_plain&amp;h={$blob->GetHash()}&amp;f={$blob->GetPath()|escape:'url'}">{t}plain{/t}</a> | 
-   {if ($commit->GetHash() != $head->GetHash()) && ($head->PathToHash($blob->GetPath()))}
+   {if isset($head) && ($commit->GetHash() != $head->GetHash()) && ($head->PathToHash($blob->GetPath()))}
      <a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=blob&amp;hb=HEAD&amp;f={$blob->GetPath()|escape:'url'}">{t}HEAD{/t}</a>
    {else}
      {t}HEAD{/t}
@@ -42,16 +60,20 @@ GitPHPJSModules = ['blob'];
    <br />
  </div>
 
- {include file='title.tpl' titlecommit=$commit}
+{include file='title.tpl' titlecommit=$commit}
 
 {include file='path.tpl' pathobject=$blob target='blobplain'}
 
  <div class="page_body">
    {if $datatag}
      {* We're trying to display an image *}
-     <div>
+     <div class="picture">
        <img src="data:{$mime};base64,{$data}" />
      </div>
+   {elseif $picture}
+    <div class="picture">
+      <img class="new" src="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=blob_plain&amp;h={$blob->GetHash()|escape:'url'}&amp;f={$file}">
+    </div>
    {elseif $geshi}
      {* We're using the highlighted output from geshi *}
      {$geshiout}

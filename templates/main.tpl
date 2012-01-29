@@ -31,38 +31,50 @@
     {else}
     <link rel="stylesheet" href="css/{$stylesheet}.css" type="text/css" />
     {/if}
-    <link rel="stylesheet" href="css/ext/jquery.qtip.css" type="text/css" />
     {block name=css}
     {/block}
+    <link rel="stylesheet" href="css/ext/jquery.qtip.css" type="text/css" />
+    {if $extracss}
+    <style type="text/css">
+    {$extracss}
+    </style>
+    {/if}
     {if $javascript}
-    {block name=javascript}
     <script src="js/ext/require.js"></script>
     {include file='jsconst.tpl'}
     <script type="text/javascript">
-    var GitPHPJSPaths = {ldelim}
+	var GitPHPJSPaths = {ldelim}
 	{if $googlejs}
-		jquery: 'https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min'
+	jquery: 'https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min'
 	{else}
-		jquery: 'ext/jquery-1.7.1.min'
+	jquery: 'ext/jquery.min'
 	{/if}
-    {rdelim};
-    {block name=javascriptpaths}
-    {if file_exists('js/common.min.js')}
-    GitPHPJSPaths.common = "common.min";
-    {/if}
-    {/block}
-
-    var GitPHPJSModules = null;
-    {block name=javascriptmodules}
-    GitPHPJSModules = ['common'];
-    {/block}
-
-    require({ldelim}
-    	baseUrl: 'js',
-	paths: GitPHPJSPaths,
-	priority: ['jquery']
-    {rdelim}, GitPHPJSModules);
+{rdelim};
+	{block name=javascriptpaths}
+	{if file_exists('js/common.min.js')}
+	GitPHPJSPaths.common = "common.min";
+	{/if}
+	{if $extrascripts}
+	 {if file_exists("js/$extrascripts.min.js")}
+		{$extrascripts}: "{$extrascripts}.min",
+	 {/if}
+	{/if}
+	{/block}
+	var GitPHPJSModules = null;
+	{block name=javascriptmodules}
+	GitPHPJSModules = ['common'];
+	{if $extrascripts}
+	'{$extrascripts}'
+	{/if}
+	{/block}
+	require({ldelim}
+	  baseUrl: 'js',
+	  paths: GitPHPJSPaths,
+	  priority: ['jquery']
+	  {rdelim}, GitPHPJSModules
+	);
     </script>
+    {block name=javascript}
     {/block}
     {/if}
   </head>
@@ -103,7 +115,12 @@
       {/block}
     </div>
     <div class="attr_footer">
-    	<a href="http://xiphux.com/programming/gitphp/" target="_blank">GitPHP by Chris Han</a>
+        <a href="https://github.com/tpruvot/GitPHP" target="_blank">GitPHP tpruvot's branch<a> based on <a href="http://gitphp.xiphux.com/">xiphux original version</a>
     </div>
+{if $debug}
+    <div class="debug_footer">
+    <!-- keep unclosed for debug log -->
+{else}
   </body>
 </html>
+{/if}

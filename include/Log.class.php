@@ -219,7 +219,7 @@ class GitPHP_Log
 	public function GetEntries()
 	{
 		$data = array();
-	
+
 		if ($this->enabled) {
 
 			if ($this->benchmark) {

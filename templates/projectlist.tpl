@@ -50,17 +50,19 @@ git source code archive
         {else}
           <th><a class="header" href="{$SCRIPT_NAME}?o=descr">{t}Description{/t}</a></th>
         {/if}
-        {if $order == "owner"}
-          <th>{t}Owner{/t}</th>
-        {else}
-          <th><a class="header" href="{$SCRIPT_NAME}?o=owner">{t}Owner{/t}</a></th>
-        {/if}
         {if $order == "age"}
           <th>{t}Last Change{/t}</th>
         {else}
           <th><a class="header" href="{$SCRIPT_NAME}?o=age">{t}Last Change{/t}</a></th>
         {/if}
-        <th>{t}Actions{/t}</th>
+        {if $show_owner }
+         {if $order == "owner"}
+          <th>{t}Owner{/t}</th>
+         {else}
+          <th><a class="header" href="{$SCRIPT_NAME}?o=owner">{t}Owner{/t}</a></th>
+         {/if}
+        {/if}
+        <th class="actions">{t}Actions{/t}</th>
       </tr>
     {/if}
 
@@ -82,11 +84,12 @@ git source code archive
         <a href="{$SCRIPT_NAME}?p={$proj->GetProject()|urlencode}&amp;a=summary" class="list {if $currentcategory != ''}indent{/if}">{$proj->GetProject()}</a>
       </td>
       <td class="projectDescription"><a href="{$SCRIPT_NAME}?p={$proj->GetProject()|urlencode}&amp;a=summary" class="list">{$proj->GetDescription()}</a></td>
-      <td class="projectOwner"><em>{$proj->GetOwner()|escape:'html'}</em></td>
       {assign var=projecthead value=$proj->GetHeadCommit()}
       <td class="projectAge">
         {if $projecthead}
-          {if $proj->GetAge() < 7200}   {* 60*60*2, or 2 hours *}
+          {if $proj->GetAge() <= 0}
+            <em class="empty">{t}No commits{/t}</em>
+          {elseif $proj->GetAge() < 7200}   {* 60*60*2, or 2 hours *}
             <span class="agehighlight"><strong><em>{$proj->GetAge()|agestring}</em></strong></span>
           {elseif $proj->GetAge() < 172800}   {* 60*60*24*2, or 2 days *}
             <span class="agehighlight"><em>{$proj->GetAge()|agestring}</em></span>
@@ -97,6 +100,9 @@ git source code archive
 	  <em class="empty">{t}No commits{/t}</em>
 	{/if}
       </td>
+      {if $show_owner }
+      <td class="projectOwner"><em>{$proj->GetOwner()|escape:'html'}</em></td>
+      {/if}
       <td class="link">
         <a href="{$SCRIPT_NAME}?p={$proj->GetProject()|urlencode}&amp;a=summary">{t}summary{/t}</a>
 	{if $projecthead}

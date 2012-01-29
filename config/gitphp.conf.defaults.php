@@ -146,9 +146,17 @@ $gitphp_conf['javascript'] = true;
  * By enabling this you agree to Google's terms for their
  * library API.
  */
-$gitphp_conf['googlejs'] = false;
+$gitphp_conf['googlejs'] = true;
 
+/*
+ * layout tweeks
+ */
 
+// project list : show/hide owner column
+$gitphp_conf['projectlist_show_owner'] = true;
+
+// project list sort order : project, age, descr, owner
+$gitphp_conf['projectlist_order'] = 'project';
 
 /*********************************************************
  * Features
@@ -412,7 +420,25 @@ $gitphp_conf['smarty_prefix'] = 'lib/smarty/libs/';
  */
 $gitphp_conf['geshiroot'] = 'lib/geshi/';
 
+/* Script added (in Blob and Blame views) at end of html file.
+ * Remove all bold,italic attributes, to fix line numbers height
+ */
+$gitphp_conf['fixupjs'] = <<<EOT
 
+    if (!(jQuery.browser.mozilla))
+    jQuery('#blobData').find('pre span').each( function() {
+        var el = jQuery(this);
+        if (el.css('font-weight') != 'normal') {
+          el.css({ 'font-weight':'normal',
+                   'text-shadow':'#f0f0f0 1px 1px 1px'
+          }); //chrome line height
+        }
+        if (el.css('font-style') == 'italic') {
+          el.css({ 'font-style':'normal' });
+        }
+    });
+
+EOT;
 
 
 /*******************************************************

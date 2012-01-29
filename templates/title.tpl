@@ -15,14 +15,18 @@
 			<a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=commitdiff&amp;h={$titlecommit->GetHash()}" class="title">{$titlecommit->GetTitle()|escape}</a>
 		{elseif $target == 'tree'}
 			<a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=tree&amp;h={$titletree->GetHash()}&amp;hb={$titlecommit->GetHash()}" class="title">{$titlecommit->GetTitle()|escape}</a>
+		{elseif $target == 'summary'}
+			{if $branch}
+			{t}repo branch{/t}: <b>{$branch}</b>
+			{/if}
+			<a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=heads" class="title">&nbsp;</a>
 		{else}
 			<a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=commit&amp;h={$titlecommit->GetHash()}" class="title">{$titlecommit->GetTitle()|escape}</a>
 		{/if}
 		{include file='refbadges.tpl' commit=$titlecommit}
+
 	{else}
-		{if $target == 'summary'}
-			<a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=summary" class="title">&nbsp;</a>
-		{elseif $target == 'shortlog'}
+		{if $target == 'shortlog'}
 			{if $disablelink}
 			  {t}shortlog{/t}
 			{else}
@@ -39,6 +43,12 @@
 			  {t}heads{/t}
 			{else}
 			  <a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=heads" class="title">{t}heads{/t}</a>
+			{/if}
+		{elseif $target == 'remotes'}
+			{if $disablelink}
+			  {t}heads{/t}
+			{else}
+			  <a href="{$SCRIPT_NAME}?p={$project->GetProject()|urlencode}&amp;a=remotes" class="title">{t}heads{/t}</a> (remote)
 			{/if}
 		{else}
 			&nbsp;

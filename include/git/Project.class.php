@@ -17,6 +17,8 @@ require_once(GITPHP_GITOBJECTDIR . 'Tag.class.php');
 require_once(GITPHP_GITOBJECTDIR . 'Pack.class.php');
 require_once(GITPHP_GITOBJECTDIR . 'GitConfig.class.php');
 
+require_once(GITPHP_GITOBJECTDIR . 'RemoteHead.class.php');
+
 define('GITPHP_ABBREV_HASH_MIN', 7);
 
 /**
@@ -102,6 +104,8 @@ class GitPHP_Project
 	 */
 	protected $category = '';
 
+	public $categoryAge = 0;
+
 /* epoch internal variables {{{2*/
 
 	/**
@@ -165,6 +169,15 @@ class GitPHP_Project
 	 * @access protected
 	 */
 	protected $heads = array();
+
+	/**
+	 * remotes
+	 *
+	 * Stores the remotes for the project
+	 *
+	 * @access protected
+	 */
+	protected $remotes = array();
 
 	/**
 	 * readRefs
@@ -286,6 +299,13 @@ class GitPHP_Project
 /* class methods {{{1*/
 
 	/**
+	 * .repo bare folders (by tpruvot)
+	 */
+	public $isAndroidRepo = false;
+	public $repoRemote = "origin";
+	public $repoBranch = "master";
+
+	/**
 	 * __construct
 	 *
 	 * Class constructor
@@ -342,13 +362,14 @@ class GitPHP_Project
 			throw new Exception(sprintf(__('%1$s is not a git repository'), $project));
 		}
 
-		if (preg_match('/(^|\/)\.{0,2}(\/|$)/', $project)) {
+		if (GitPHP_Config::GetInstance()->GetValue('projectroot') != '/') {
+
+			if (preg_match('/(^|\/)\.{0,2}(\/|$)/', $project))
 			throw new Exception(sprintf(__('%1$s is attempting directory traversal'), $project));
-		}
 
-		$pathPiece = substr($fullPath, 0, strlen($realProjectRoot));
+			$pathPiece = substr($fullPath, 0, strlen($realProjectRoot));
 
-		if ((!is_link($path)) && (strcmp($pathPiece, $realProjectRoot) !== 0)) {
+			if ((!is_link($path)) && (strcmp($pathPiece, $realProjectRoot) !== 0))
 			throw new Exception(sprintf(__('%1$s is outside of the projectroot'), $project));
 		}
 
@@ -432,6 +453,7 @@ class GitPHP_Project
 				} elseif (isset($data['name']) && !empty($data['name'])) {
 					$this->owner = $data['name'];
 				}
+				$this->owner = rtrim($this->owner,',');
 			}
 		}
 
@@ -484,14 +506,47 @@ class GitPHP_Project
 	public function GetDescription($trim = 0)
 	{
 		if (!$this->readDescription) {
+
 			if ($this->GetConfig()->HasValue('gitphp.description')) {
 				$this->description = $this->GetConfig()->GetValue('gitphp.description');
 			} else if (file_exists($this->GetPath() . '/description')) {
 				$this->description = file_get_contents($this->GetPath() . '/description');
+
+				if (strpos($this->description,'Unnamed repository; edit this file') !== false)
+					$this->description = '';
+			} else {
+				$this->description = '';
+			}
+
+			if (empty($this->description)) {
+
+				if (empty($this->remotes)) {
+					//default is 'origin'
+					$remote = $this->repoRemote;
+				} else {
+					//get first remote
+					$rm = reset($this->remotes);
+					$remote = $rm->GetRemoteName();
+				}
+
+				if ($this->GetConfig()->HasValue('remote.'.$remote.'.url')) {
+					$this->description = $this->GetConfig()->GetValue('remote.'.$remote.'.url');
+				}
+
+				if (empty($this->description)) {
+					$this->description = $this->GetCloneUrl();
+				}
+
+				if (empty($this->description)) {
+					$this->description = '-';
+				} else {
+					// save project description if Unnamed
+					$this->GetConfig()->SetValue('gitphp.description',$this->description);
+				}
 			}
 			$this->readDescription = true;
 		}
-		
+
 		if (($trim > 0) && (strlen($this->description) > $trim)) {
 			return substr($this->description, 0, $trim) . '…';
 		}
@@ -784,7 +839,9 @@ class GitPHP_Project
 	{
 		$this->readHeadRef = true;
 
-		if ($this->GetCompat()) {
+		if ($this->isAndroidRepo) {
+			$this->ReadHeadCommitRepo();
+		} elseif ($this->GetCompat()) {
 			$this->ReadHeadCommitGit();
 		} else {
 			$this->ReadHeadCommitRaw();
@@ -817,7 +874,7 @@ class GitPHP_Project
 	private function ReadHeadCommitRaw()
 	{
 		$head = trim(file_get_contents($this->GetPath() . '/HEAD'));
-		if (preg_match('/^([0-9A-Fa-f]{40})$/', $head, $regs)) {
+		if (preg_match('/^([0-9a-f]{40})$/i', $head, $regs)) {
 			/* Detached HEAD */
 			$this->head = $regs[1];
 		} else if (preg_match('/^ref: (.+)$/', $head, $regs)) {
@@ -828,6 +885,25 @@ class GitPHP_Project
 			if (isset($this->heads[$regs[1]])) {
 				$this->head = $this->heads[$regs[1]]->GetHash();
 			}
+		}
+	}
+
+	/**
+	 * ReadHeadCommitRepo
+	 *
+	 * Read head commit for repo (no HEAD)
+	 *
+	 * @access private
+	 */
+	private function ReadHeadCommitRepo()
+	{
+		/* standard pointer to head */
+		if (!$this->readRefs)
+			$this->ReadRefList();
+
+		$head = 'refs/remotes/'.$this->repoRemote.'/'.$this->repoBranch;
+		if (is_object($this->remotes[$head]) && empty($this->head)) {
+			$this->head = $this->remotes[$head]->GetHash();
 		}
 	}
 
@@ -853,23 +929,6 @@ class GitPHP_Project
 	}
 
 	/**
-	 * GetAge
-	 *
-	 * Gets this project's age
-	 * (time since most recent change)
-	 *
-	 * @access public
-	 * @return integer age
-	 */
-	public function GetAge()
-	{
-		if (!$this->epochRead)
-			$this->ReadEpoch();
-
-		return time() - $this->epoch;
-	}
-
-	/**
 	 * ReadEpoch
 	 *
 	 * Reads this project's epoch
@@ -881,7 +940,7 @@ class GitPHP_Project
 	{
 		$this->epochRead = true;
 
-		if ($this->GetCompat()) {
+		if ($this->GetCompat() && !$this->isAndroidRepo) {
 			$this->ReadEpochGit();
 		} else {
 			$this->ReadEpochRaw();
@@ -927,7 +986,18 @@ class GitPHP_Project
 			$this->ReadRefList();
 
 		$epoch = 0;
-		foreach ($this->heads as $head) {
+
+		$array = $this->heads;
+		if (empty($array) && $this->isAndroidRepo) {
+			$array = $this->remotes;
+			//only use selected branch if set, faster
+			$selected = 'refs/remotes/'.$this->repoRemote.'/'.$this->repoBranch;
+			if (array_key_exists($selected, $this->remotes)) {
+				$array = array($this->remotes[$selected]);
+			}
+		}
+
+		foreach ($array as $head) {
 			$commit = $head->GetCommit();
 			if ($commit) {
 				if ($commit->GetCommitterEpoch() > $epoch) {
@@ -1044,7 +1114,6 @@ class GitPHP_Project
 			return $this->tags['refs/tags/' . $hash]->GetCommit();
 
 		if (preg_match('/^[0-9A-Fa-f]{4,39}$/', $hash)) {
-			var_dump($hash);
 			$hash = $this->ExpandHash($hash);
 		}
 
@@ -1104,7 +1173,12 @@ class GitPHP_Project
 	{
 		$this->readRefs = true;
 
-		if ($this->GetCompat()) {
+		if ( !$this->isAndroidRepo && is_file($this->GetPath() . '/.repopickle_config') ) {
+			//.repo projects doesn't store refs/heads
+			$this->isAndroidRepo = true;
+		}
+
+		if ($this->GetCompat() && !$this->isAndroidRepo) {
 			$this->ReadRefListGit();
 		} else {
 			$this->ReadRefListRaw();
@@ -1174,7 +1248,7 @@ class GitPHP_Project
 			}
 
 			$hash = trim(file_get_contents($heads[$i]));
-			if (preg_match('/^[0-9A-Fa-f]{40}$/', $hash)) {
+			if (preg_match('/^[0-9a-f]{40}$/i', $hash)) {
 				$head = substr($key, strlen('refs/heads/'));
 				$this->heads[$key] = new GitPHP_Head($this, $head, $hash);
 			}
@@ -1190,7 +1264,7 @@ class GitPHP_Project
 			}
 
 			$hash = trim(file_get_contents($tags[$i]));
-			if (preg_match('/^[0-9A-Fa-f]{40}$/', $hash)) {
+			if (preg_match('/^[0-9a-f]{40}$/i', $hash)) {
 				$tag = substr($key, strlen('refs/tags/'));
 				$this->tags[$key] = $this->LoadTag($tag, $hash);
 			}
@@ -1203,7 +1277,7 @@ class GitPHP_Project
 			$lastRef = null;
 			foreach ($packedRefs as $ref) {
 
-				if (preg_match('/^\^([0-9A-Fa-f]{40})$/', $ref, $regs)) {
+				if (preg_match('/^\^([0-9a-f]{40})$/i', $ref, $regs)) {
 					// dereference of previous ref
 					if (($lastRef != null) && ($lastRef instanceof GitPHP_Tag)) {
 						$derefCommit = $this->GetCommit($regs[1]);
@@ -1215,7 +1289,7 @@ class GitPHP_Project
 
 				$lastRef = null;
 
-				if (preg_match('/^([0-9A-Fa-f]{40}) refs\/(tags|heads)\/(.+)$/', $ref, $regs)) {
+				if (preg_match('/^([0-9A-Fa-f]{40}) refs\/(tags|heads|remotes)\/(.+)$/', $ref, $regs)) {
 					// standard tag/head
 					$key = 'refs/' . $regs[2] . '/' . $regs[3];
 					if ($regs[2] == 'tags') {
@@ -1227,9 +1301,67 @@ class GitPHP_Project
 						if (!isset($this->heads[$key])) {
 							$this->heads[$key] = new GitPHP_Head($this, $regs[3], $regs[1]);
 						}
+					} else if ($this->isAndroidRepo && $regs[2] == 'remotes') {
+						if (!isset($this->remotes[$key])) {
+							$this->remotes[$key] = new GitPHP_RemoteHead($this, $regs[3], $regs[1]);
+						}
 					}
 				}
 			}
+		}
+
+		// double check...
+		if ($this->isAndroidRepo ) {
+//
+			$heads = $this->ListDir($this->GetPath() . '/refs/remotes');
+			for ($i = 0; $i < count($heads); $i++) {
+
+				//sample 'gingerbread' content in 'm' folder:
+				//  ref: refs/remotes/github/gingerbread
+				$head = trim(file_get_contents($heads[$i]));
+				if (preg_match('/^ref: (.+)$/', $head, $regs)) {
+					$heads[$i] = $this->GetPath() . "/". $regs[1];
+				}
+
+				$key = trim(substr($heads[$i], $pathlen), "/\\");
+
+				if (isset($this->remotes[$key])) {
+					continue;
+				}
+
+				$m = $heads[$i];
+				if (!is_file($m)) {
+					//replace remote by "m", current ?
+					$m = preg_replace('#(refs/remotes/)([^\/]+)#','$1m',$m);
+				}
+
+				if (is_file($m)) {
+					$hash = trim(file_get_contents($m));
+					if (preg_match('/^[0-9a-f]{40}$/i', $hash)) {
+						$head = substr($key, strlen('refs/remotes/'));
+						$this->remotes[$key] = new GitPHP_RemoteHead($this, $head, $hash);
+						//GitPHP_Log::GetInstance()->Log($this->project.': [ReadRefListRaw] found '.$head.'='.$hash);
+					} else {
+						$head = substr($key, strlen('refs/remotes/'));
+						if (!array_key_exists($key,$this->remotes)) {
+							$this->remotes[$key] = new GitPHP_RemoteHead($this, $head);
+						}
+					}
+				} else {
+					GitPHP_Log::GetInstance()->Log($this->project.': [ReadRefListRaw] '.$key.' not found');
+				}
+			}
+//
+			//use defaut branch set in manifest, often missing
+			$default = $this->repoRemote.'/'.$this->repoBranch;
+			$key = 'refs/remotes/'.$default;
+			if (!array_key_exists($key,$this->remotes)) {
+				GitPHP_Log::GetInstance()->Log($this->project.': [ReadRefListRaw] add missing remote branch '.$key.'');
+				$this->remotes[$key] = new GitPHP_RemoteHead($this, $default);
+			}
+
+			//var_dump(array_keys($this->remotes));
+			//GitPHP_Log::GetInstance()->Log($this->project.': [ReadRefListRaw] found '.count($this->remotes).' remote branches');
 		}
 	}
 
@@ -1398,6 +1530,78 @@ class GitPHP_Project
 /*}}}2*/
 
 /* head loading methods {{{2*/
+
+	/**
+	 * GetRemotes
+	 *
+	 * Gets list of remotes for this project
+	 *
+	 * @access public
+	 * @param integer $count number of tags to load
+	 * @return array array of heads
+	 */
+	public function GetRemotes($count = 0)
+	{
+		if (!$this->readRefs)
+			$this->ReadRefList();
+
+		if (GitPHP_Config::GetInstance()->GetValue('compat', false)) {
+			return $this->GetRemotesGit($count);
+		} else {
+			return $this->GetRemotesRaw($count);
+		}
+	}
+	/**
+	 * GetRemotesGit
+	 *
+	 * Gets the list of sorted heads using the git executable
+	 *
+	 * @access private
+	 * @param integer $count number of tags to load
+	 * @return array array of heads
+	 */
+	private function GetRemotesGit($count = 0)
+	{
+		$exe = new GitPHP_GitExe($this);
+		$args = array();
+		$args[] = '-r';
+		$ret = $exe->Execute('remote', $args);
+		unset($exe);
+
+		$lines = explode("\n", $ret);
+
+		$remotes = array();
+		foreach ($lines as $ref) {
+			if (isset($this->remotes[$ref])) {
+				$remotes[] = $this->remotes[$ref];
+			}
+		}
+		if (($count > 0) && (count($remotes) > $count)) {
+			$remotes = array_slice($remotes, 0, $count);
+		}
+
+		return $remotes;
+	}
+
+	/**
+	 * GetRemotesRaw
+	 *
+	 * Gets the list of sorted heads using raw git objects
+	 *
+	 * @access private
+	 * @param integer $count number of tags to load
+	 * @return array array of heads
+	 */
+	private function GetRemotesRaw($count = 0)
+	{
+		$heads = $this->remotes;
+		usort($heads, array('GitPHP_RemoteHead', 'CompareAge'));
+
+		if (($count > 0) && (count($heads) > $count)) {
+			$heads = array_slice($heads, 0, $count);
+		}
+		return $heads;
+	}
 
 	/**
 	 * GetHeads
@@ -1684,7 +1888,7 @@ class GitPHP_Project
 	 */
 	public function GetObject($hash, &$type = 0)
 	{
-		if (!preg_match('/^[0-9A-Fa-f]{40}$/', $hash)) {
+		if (!preg_match('/^[0-9a-f]{40}$/i', $hash)) {
 			return false;
 		}
 
@@ -1735,10 +1939,15 @@ class GitPHP_Project
 	private function ReadPacks()
 	{
 		$dh = opendir($this->GetPath() . '/objects/pack');
-		if ($dh !== false) {
-			while (($file = readdir($dh)) !== false) {
-				if (preg_match('/^pack-([0-9A-Fa-f]{40})\.idx$/', $file, $regs)) {
+		if ($dh === false) {
+			return;
+		}
+		while (($file = readdir($dh)) !== false) {
+			if (preg_match('/^pack-([0-9A-Fa-f]{40})\.idx$/', $file, $regs)) {
+				try {
 					$this->packs[] = new GitPHP_Pack($this, $regs[1]);
+				} catch (Exception $e) {
+					GitPHP_Log::GetInstance()->Log($this->project.': error in '.$file);
 				}
 			}
 		}
@@ -2012,7 +2221,11 @@ class GitPHP_Project
 			$args[] = '--regexp-ignore-case';
 		unset($exe);
 
-		$args[] = '--grep=\'' . $pattern . '\'';
+		// if search for hash, dont use grep
+		if (preg_match('/^([0-9a-f]{40})$/i', $pattern, $regs))
+			$count = 1;
+		else
+			$args[] = '--grep=\'' . $pattern . '\'';
 
 		$ret = $this->RevList($hash, $count, $skip, $args);
 		$len = count($ret);
@@ -2156,6 +2369,26 @@ class GitPHP_Project
 	 * Compares two projects by project name
 	 *
 	 * @access public
+	 * @return integer age
+	 */
+	public function GetAge()
+	{
+		if (!$this->epochRead)
+			$this->ReadEpoch();
+
+		if ($this->epoch == 0)
+			return -1;
+
+		return time() - $this->epoch;
+	}
+
+	/**
+	 * ReadEpoch
+	 *
+	 * Reads this project's epoch
+	 * (timestamp of most recent change)
+	 *
+	 * @access private
 	 * @static
 	 * @param mixed $a first project
 	 * @param mixed $b second project
@@ -2163,7 +2396,7 @@ class GitPHP_Project
 	 */
 	public static function CompareProject($a, $b)
 	{
-		$catCmp = strcmp($a->GetCategory(), $b->GetCategory());
+		$catCmp = GitPHP_Project::CompareCategory($a, $b);
 		if ($catCmp !== 0)
 			return $catCmp;
 
@@ -2183,9 +2416,8 @@ class GitPHP_Project
 	 */
 	public static function CompareDescription($a, $b)
 	{
-		$catCmp = strcmp($a->GetCategory(), $b->GetCategory());
-		if ($catCmp !== 0)
-			return $catCmp;
+		// disable category display on this column sort
+		$b->SetCategory('');
 
 		return strcmp($a->GetDescription(), $b->GetDescription());
 	}
@@ -2203,7 +2435,7 @@ class GitPHP_Project
 	 */
 	public static function CompareOwner($a, $b)
 	{
-		$catCmp = strcmp($a->GetCategory(), $b->GetCategory());
+		$catCmp = GitPHP_Project::CompareCategory($a, $b);
 		if ($catCmp !== 0)
 			return $catCmp;
 
@@ -2223,7 +2455,10 @@ class GitPHP_Project
 	 */
 	public static function CompareAge($a, $b)
 	{
-		$catCmp = strcmp($a->GetCategory(), $b->GetCategory());
+		if ($b->GetCategory() === '' && $a->GetCategory() )
+			return 1;
+
+		$catCmp = GitPHP_Project::CompareCategoryAge($a, $b);
 		if ($catCmp !== 0)
 			return $catCmp;
 
@@ -2232,6 +2467,41 @@ class GitPHP_Project
 		return ($a->GetAge() < $b->GetAge() ? -1 : 1);
 	}
 
+	/**
+	 * CompareCategory
+	 *
+	 * Compares two projects by category
+	 *
+	 * @access public
+	 * @static
+	 * @param mixed $a first project
+	 * @param mixed $b second project
+	 * @return integer comparison result
+	 */
+	public static function CompareCategory($a, $b)
+	{
+		if ($b->GetCategory() === '' && $a->GetCategory() )
+			return 1;
+		return strcmp($a->GetCategory(), $b->GetCategory());
+	}
+
+	/**
+	 * CompareCategoryAge
+	 *
+	 * Compares two projects by category age
+	 *
+	 * @access public
+	 * @static
+	 * @param mixed $a first project
+	 * @param mixed $b second project
+	 * @return integer comparison result
+	 */
+	public static function CompareCategoryAge($a, $b)
+	{
+		if ($a->categoryAge === $b->categoryAge)
+			return 0;
+		return ($a->categoryAge < $b->categoryAge ? -1 : 1);
+	}
 /*}}}1*/
 
 }
